@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://c7scl7xsl5q1b"]
+
+[ext_resource type="Script" uid="uid://dso1a4nrwrdx2" path="res://Main.gd" id="1_ig7tw"]
+
+[node name="Main" type="Node" unique_id=65814651]
+script = ExtResource("1_ig7tw")
+
+[node name="GameTimer" type="Timer" parent="." unique_id=1143113919]

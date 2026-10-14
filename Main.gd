@@ -73,15 +73,17 @@ func advance_one_year() -> void:
 	year += 1
 	var previous_hero_influence := hero_influence
 
-	# 誕生処理はこのループの後に実行します。
-	# 新生児は誕生した年には加齢・行動しません。
+	# 全員の加齢を完了してからイベントを処理します。
+	# ログのシグナルを受け取るUIにも、同じ年の年齢を渡せます。
 	for person in characters:
-		if not person.is_alive:
-			continue
+		if person.is_alive:
+			person.age += 1
 
-		person.age += 1
-		_process_character_year(person)
+	for person in characters:
+		if person.is_alive:
+			_process_character_year(person)
 
+	# 新生児は誕生した年には加齢・行動しません。
 	_try_birth()
 	_check_balance_change(previous_hero_influence)
 	year_advanced.emit(year)

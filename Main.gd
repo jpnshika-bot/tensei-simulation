@@ -42,6 +42,19 @@ var characters: Array[Character] = []
 
 var _rng := RandomNumberGenerator.new()
 var _next_character_id: int = 1
+var relationship: float = 10.0
+var diplomacy: String = "緊張"
+var generation: int = 1
+var reincarnated: Array[Character] = []
+var regions: Array[Dictionary] = [
+	{"name": "白暁の王都", "camp": "hero", "prosperity": 65},
+	{"name": "翠葉の里", "camp": "hero", "prosperity": 70},
+	{"name": "星霜の聖域", "camp": "neutral", "prosperity": 50},
+	{"name": "紫宵の魔城", "camp": "demon", "prosperity": 65},
+	{"name": "紅砂の交易市", "camp": "demon", "prosperity": 55},
+	{"name": "銀嶺の関所", "camp": "neutral", "prosperity": 45},
+]
+var last_encounter: String = "二人の魂が、まだ見ぬ未来へ降り立った。"
 
 const PERSONALITIES: Array[String] = ["勇敢", "野心家", "穏やか"]
 const HERO_JOBS: Array[String] = ["騎士", "僧侶", "冒険者"]
@@ -52,8 +65,8 @@ const NEUTRAL_JOBS: Array[String] = ["商人", "農民", "職人"]
 func _ready() -> void:
 	_rng.randomize()
 
-	_create_character("アレン", "hero", "勇敢", 18)
-	_create_character("ヴェル", "demon", "野心家", 18)
+	reincarnated.append(_create_character("アレン", "hero", "勇敢", 18))
+	reincarnated.append(_create_character("リゼ", "demon", "穏やか", 18))
 	_add_world_log("勇者陣営と魔王陣営の歴史が始まった。")
 
 	# エディタで同じコールバックを接続済みでも重複接続しません。
@@ -63,6 +76,9 @@ func _ready() -> void:
 	game_timer.wait_time = maxf(seconds_per_year, 0.1)
 	game_timer.one_shot = false
 	game_timer.start()
+	var interface = preload("res://scripts/WorldUI.gd").new()
+	interface.world = self
+	add_child(interface)
 
 
 func _on_game_timer_timeout() -> void:
@@ -85,6 +101,7 @@ func advance_one_year() -> void:
 
 	# 新生児は誕生した年には加齢・行動しません。
 	_try_birth()
+	_update_diplomacy()
 	_check_balance_change(previous_hero_influence)
 	year_advanced.emit(year)
 
@@ -293,3 +310,57 @@ func _camp_label(camp: String) -> String:
 			return "魔王陣営"
 		_:
 			return "中立陣営"
+
+
+func _update_diplomacy() -> void:
+	if not reincarnated[0].is_alive and not reincarnated[1].is_alive:
+		generation += 1
+		reincarnated.clear()
+		reincarnated.append(_create_character("アレン・%d世" % generation, "hero", PERSONALITIES[_rng.randi_range(0, 2)], 18))
+		reincarnated.append(_create_character("リゼ・%d世" % generation, "demon", PERSONALITIES[_rng.randi_range(0, 2)], 18))
+		relationship = 0.0
+		_add_world_log("第%d世代の二人が転生した。領土と歴史は受け継がれる。" % generation)
+	if reincarnated[0].is_alive and reincarnated[1].is_alive:
+		var encounters: Array[String] = ["国境の祭りで語り合った", "交易路を共同で守った", "領土を巡って対立した", "民の救済に協力した", "互いの使節を拒んだ"]
+		var event_index := _rng.randi_range(0, encounters.size() - 1)
+		var delta: float = [12.0, 9.0, -18.0, 14.0, -15.0][event_index]
+		for person in reincarnated:
+			if person.character == "穏やか":
+				delta += 3.0
+			elif person.character == "野心家":
+				delta -= 3.0
+		relationship = clampf(relationship + delta, -100.0, 100.0)
+		last_encounter = "%sと%sは%s。" % [reincarnated[0].name, reincarnated[1].name, encounters[event_index]]
+		for person in reincarnated:
+			_add_character_log(person, last_encounter)
+		_add_world_log(last_encounter)
+	_resolve_diplomacy()
+	if diplomacy == "戦争":
+		var region_index := _rng.randi_range(0, regions.size() - 1)
+		var winner := "hero" if _rng.randf() < hero_influence else "demon"
+		var region: Dictionary = regions[region_index]
+		region.prosperity = maxi(0, int(region.prosperity) - 8)
+		if region.camp != winner:
+			region.camp = winner
+			_shift_influence(winner, 0.03)
+			_add_world_log("%sが%sを制圧した。" % [_camp_label(winner), region.name])
+	elif diplomacy in ["和平", "共生"]:
+		for region in regions:
+			region.prosperity = mini(100, int(region.prosperity) + 2)
+
+
+func _resolve_diplomacy() -> void:
+	var previous := diplomacy
+	# 閾値に幅を持たせ、毎年の戦争・和平の振動を防ぎます。
+	if relationship <= -30.0:
+		diplomacy = "戦争"
+	elif relationship >= 60.0:
+		diplomacy = "共生"
+	elif relationship >= 20.0:
+		diplomacy = "和平"
+	elif diplomacy == "戦争" and relationship < 0.0:
+		diplomacy = "戦争"
+	else:
+		diplomacy = "緊張"
+	if previous != diplomacy:
+		_add_world_log("両陣営の関係が「%s」から「%s」へ変化した。" % [previous, diplomacy])
